@@ -16,13 +16,12 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 
-APIKEY = os.getenv("APIKEY")
-
 
 class Automation:
     def __init__(self):
         self.service = Service(ChromeDriverManager().install())
         self.driver = None
+        self.api_keys = [os.getenv("APIKEY_1"), os.getenv("APIKEY_2")]
 
     def start_driver(self):
 
@@ -34,8 +33,11 @@ class Automation:
             'Chrome/87.0.4280.141 Safari/537.36'
         ]
 
-        # Proxy configuration in selenium
-        proxy = f"http://scraperapi:{APIKEY}@proxy-server.scraperapi.com:8001"
+        # Proxy rotation occurs because api keys are being rotated randomly at the time of proxy url configuration
+        api_key = random.choice(self.api_keys)
+
+        # Proxy url configuration
+        proxy = f"http://scraperapi:{api_key}@proxy-server.scraperapi.com:8001"
         selenium_proxy = Proxy()
         selenium_proxy.proxy_type = ProxyType.MANUAL
         selenium_proxy.http_proxy = proxy
