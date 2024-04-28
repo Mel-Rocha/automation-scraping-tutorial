@@ -1,63 +1,78 @@
+import os
 import time
 import random
 import logging
 
+import requests
+from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from selenium import webdriver
-from selenium.webdriver import Keys
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.common import NoSuchElementException, TimeoutException
+from selenium.webdriver.common.proxy import Proxy, ProxyType
+
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
+
+APIKEY = os.getenv("APIKEY")
 
 
 class Automation:
     def __init__(self):
-        self.service = Service(ChromeDriverManager().install())  # Automatically downloads the version of WebDriver
-        # compatible with the version of Chrome
-        self.driver = None  # Browser instance that we will control
+        self.service = Service(ChromeDriverManager().install())
+        self.driver = None
 
     def start_driver(self):
-        """
-        launch the browser
-        """
 
-        # What are user_agents: They contain information about the user's browser
-        # and operating system, they serve the server to provide content compatible with the user
         user_agents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 '
+            'Safari/537.36',
             'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.141 Safari/537.36'
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/87.0.4280.141 Safari/537.36'
         ]
+
+        # Proxy configuration in selenium
+        proxy = f"http://scraperapi:{APIKEY}@proxy-server.scraperapi.com:8001"
+        selenium_proxy = Proxy()
+        selenium_proxy.proxy_type = ProxyType.MANUAL
+        selenium_proxy.http_proxy = proxy
+        selenium_proxy.ssl_proxy = proxy
 
         chrome_options = Options()
         chrome_options.add_argument("--incognito")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")  # Disable automation detection
-        chrome_options.add_argument(
-            f'user-agent={random.choice(user_agents)}')  # Simulate different types of devices and browsers
-        chrome_options.add_argument('start-maximized')  # Maximizes the screen to simulate human behavior
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_argument(f'user-agent={random.choice(user_agents)}')
+        chrome_options.add_argument('start-maximized')
         chrome_options.add_argument("--enable-features=NetworkService,NetworkServiceInProcess")
-        chrome_options.add_argument("--enable-javascript")  # Enables the application to interact with dynamic elements
+        chrome_options.add_argument("--enable-javascript")
 
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
 
-        self.driver = webdriver.Chrome(service=self.service, options=chrome_options)  # Initialization of the browser
-        # driver with the service that is responsible for downloading the version of the WebDriver compatible with my
-        # browser and with the configuration defined in Options
+        # When the Chrome driver instance is created, the configured proxy is automatically used for all requests
+        # made by the browser, resulting in IP rotation
+        chrome_options.proxy = selenium_proxy
 
-        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")  #
-        # Removes the indication that the browser is being controlled by automation
+        self.driver = webdriver.Chrome(service=self.service, options=chrome_options)
+
+        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+        # Information about the ip used
+        logging.info(f"Proxy used: {proxy}")
+
+        proxies = {
+            "http": proxy,
+            "https": proxy,
+        }
+        response = requests.get("http://httpbin.org/ip", proxies=proxies)
+        ip_used = response.json()['origin']
+
+        logging.info(f"IP used: {ip_used}")
 
     def stop_driver(self):
-        """
-        The browser/driver instance is terminated when it is no longer needed by the following
-        reasons: release of resources, avoid conflicts, because if you want to start a new
-        instance and still have the old one running, this can lead to conflicts and cleanup
-        session.
-        """
         if self.driver:
             self.driver.quit()
 
@@ -67,41 +82,14 @@ class Automation:
         try:
             self.driver.get("https://www.ikesaki.com.br/")
 
-            time.sleep(random.uniform(8, 10))  # Random time.sleeps to simulate real user behavior
+            time.sleep(random.uniform(8, 10))
 
-            def dynamic_page():
-                """
-                To interact with elements that are dynamically loaded or modified
-                with JavaScript prefer to use selenium. Example of use:
-                clicking buttons, filling out forms, waiting for JavaScript to load.
-                """
+            html_content = self.driver.page_source
+            soup = BeautifulSoup(html_content, 'html.parser')
 
-                try:
-                    search_box_xpath = '//*[@id="downshift-0-input"]'
-                    search_box = self.driver.find_element('xpath', search_box_xpath)
-                    search_box.send_keys("Pesquisa", Keys.ENTER)
-                    time.sleep(5)
-
-                except TimeoutException as e:
-                    print(f"Erro ao clicar no elemento: Tempo de execução limite {e}")
-                    logging.error("O elemento foi encontrado, mas não se tornou visivel dentro do tempo limite.")
-                except NoSuchElementException as e:
-                    print(f"Erro ao clicar no elemento: Elemento não encontrado {e}.")
-                    logging.error("O elemento não foi encontrado.")
-
-            def static_page():
-                """
-                for the static pages prefer bs4
-                """
-                html_content = self.driver.page_source
-                soup = BeautifulSoup(html_content, 'html.parser')
-
-                title = soup.find("h2")
-                if title:
-                    print(title.text)
-
-            static_page()
-            dynamic_page()
+            title = soup.find("h2")
+            if title:
+                print(title.text)
 
         finally:
             self.stop_driver()
